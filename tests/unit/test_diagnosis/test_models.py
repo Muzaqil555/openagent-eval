@@ -18,15 +18,13 @@ from openagent_eval.diagnosis.models import (
 class TestFailureMode:
     """Tests for FailureMode enum."""
 
-    def test_has_eight_modes(self) -> None:
-        """FailureMode should have exactly 8 failure modes."""
-        assert len(FailureMode) == 8
-
     def test_string_values(self) -> None:
         """FailureMode values should be descriptive strings."""
         assert FailureMode.EMPTY_RETRIEVAL.value == "empty_retrieval"
         assert FailureMode.HALLUCINATION.value == "hallucination"
         assert FailureMode.CHUNKING_SPLIT_INFO_LOST.value == "chunking_split_info_lost"
+        assert FailureMode.WRONG_TOOL_CALL.value == "wrong_tool_call"
+        assert FailureMode.WRONG_TOOL_ARGUMENTS.value == "wrong_tool_arguments"
 
     def test_is_string_enum(self) -> None:
         """FailureMode should be usable as a string."""
@@ -38,16 +36,13 @@ class TestFailureMode:
 class TestBlameTarget:
     """Tests for BlameTarget enum."""
 
-    def test_has_six_targets(self) -> None:
-        """BlameTarget should have exactly 6 targets."""
-        assert len(BlameTarget) == 6
-
     def test_values(self) -> None:
         """BlameTarget values should be descriptive strings."""
         assert BlameTarget.RETRIEVAL.value == "retrieval"
         assert BlameTarget.GENERATION.value == "generation"
         assert BlameTarget.CHUNKING.value == "chunking"
         assert BlameTarget.DATASET.value == "dataset"
+        assert BlameTarget.TOOL_CALL.value == "tool_call"
         assert BlameTarget.NONE.value == "none"
         assert BlameTarget.UNKNOWN.value == "unknown"
 

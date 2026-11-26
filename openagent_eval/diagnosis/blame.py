@@ -1,4 +1,4 @@
-"""Blame attribution for failed RAG evaluations.
+"""Blame attribution for failed RAG evaluations and recorded agent traces.
 
 Analyzes retrieval scores, generation scores, and context quality to determine
 which component (retrieval, generation, or chunking) caused a failure.
@@ -16,6 +16,7 @@ from openagent_eval.diagnosis.models import (
     FailureInstance,
     FailureMode,
 )
+from openagent_eval.types.tool_call import ToolCallMismatchKind
 
 # ---------------------------------------------------------------------------
 # Thresholds (tunable)
@@ -32,6 +33,15 @@ ANSWER_TOO_SHORT = 10  # characters
 
 # Chunking thresholds
 CONTEXT_LENGTH_VARIANCE_RATIO = 5.0  # max/min ratio indicating uneven chunks
+
+_TOOL_CALL_REASONS = {
+    ToolCallMismatchKind.WRONG_TOOL_CALL: "The recorded tool name differs from the expected tool.",
+    ToolCallMismatchKind.WRONG_TOOL_ARGUMENTS: "The tool arguments differ from the expected arguments.",
+    ToolCallMismatchKind.MISSING_TOOL_CALL: "The agent omitted an expected tool call.",
+    ToolCallMismatchKind.EXTRA_TOOL_CALL: "The agent made an unexpected tool call.",
+    ToolCallMismatchKind.MISSING_EXPECTED_TRACE: "The dataset is missing the expected tool-call trace.",
+    ToolCallMismatchKind.MISSING_ACTUAL_TRACE: "The dataset is missing the recorded tool-call trace.",
+}
 
 
 class BlameAttribution:
@@ -56,9 +66,13 @@ class BlameAttribution:
         failures: list[FailureInstance] = []
         question = scores.question
 
-        # --- Retrieval analysis ---
-        retrieval_failures = self._analyze_retrieval(scores, question)
-        failures.extend(retrieval_failures)
+        # An agent-only item can legitimately have no retrieval context.
+        if (
+            scores.tool_call_mismatches is None
+            or scores.context_count
+            or scores.retrieval_scores
+        ):
+            failures.extend(self._analyze_retrieval(scores, question))
 
         # --- Generation analysis ---
         generation_failures = self._analyze_generation(scores, question)
@@ -67,6 +81,21 @@ class BlameAttribution:
         # --- Chunking analysis ---
         chunking_failures = self._analyze_chunking(scores, question)
         failures.extend(chunking_failures)
+
+        for mismatch in scores.tool_call_mismatches or ():
+            kind = mismatch["kind"]
+            step = mismatch["step"]
+            reason = _TOOL_CALL_REASONS[kind]
+            failures.append(
+                FailureInstance(
+                    mode=FailureMode(kind.value),
+                    blame=BlameTarget.TOOL_CALL,
+                    confidence=1.0,
+                    reason=f"Step {step}: {reason}" if step is not None else reason,
+                    question=question,
+                    step=step,
+                )
+            )
 
         # --- Determine primary blame ---
         return self._determine_blame(scores, failures, question)

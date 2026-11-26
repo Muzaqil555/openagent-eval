@@ -9,9 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from openagent_eval.types.tool_call import ToolCallMismatch, ToolCallMismatchKind
+
 
 class FailureMode(StrEnum):
-    """Enumeration of RAG failure modes.
+    """Enumeration of evaluation failure modes.
 
     Each mode maps to a specific component failure:
     - Retrieval failures: empty_retrieval, low_context_relevance, stale_index, embedding_mismatch
@@ -28,6 +30,12 @@ class FailureMode(StrEnum):
     CHUNKING_SPLIT_INFO_LOST = "chunking_split_info_lost"
     STALE_INDEX = "stale_index"
     EMBEDDING_MISMATCH = "embedding_mismatch"
+    WRONG_TOOL_CALL = ToolCallMismatchKind.WRONG_TOOL_CALL.value
+    WRONG_TOOL_ARGUMENTS = ToolCallMismatchKind.WRONG_TOOL_ARGUMENTS.value
+    MISSING_TOOL_CALL = ToolCallMismatchKind.MISSING_TOOL_CALL.value
+    EXTRA_TOOL_CALL = ToolCallMismatchKind.EXTRA_TOOL_CALL.value
+    MISSING_EXPECTED_TRACE = ToolCallMismatchKind.MISSING_EXPECTED_TRACE.value
+    MISSING_ACTUAL_TRACE = ToolCallMismatchKind.MISSING_ACTUAL_TRACE.value
 
 
 class BlameTarget(StrEnum):
@@ -41,6 +49,7 @@ class BlameTarget(StrEnum):
     GENERATION = "generation"
     CHUNKING = "chunking"
     DATASET = "dataset"
+    TOOL_CALL = "tool_call"
     NONE = "none"
     UNKNOWN = "unknown"
 
@@ -56,6 +65,7 @@ class FailureInstance:
         reason: Human-readable explanation.
         question: The question that triggered the failure.
         evidence: Supporting data for the diagnosis (metric scores, etc.).
+        step: One-based position of the failing tool call, when known.
     """
 
     mode: FailureMode
@@ -64,6 +74,7 @@ class FailureInstance:
     reason: str
     question: str = ""
     evidence: dict[str, float] = field(default_factory=dict)
+    step: int | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence <= 1.0:
@@ -84,6 +95,7 @@ class ComponentScores:
         context_lengths: Lengths of retrieved contexts in characters.
         answer_length: Length of the generated answer in characters.
         latency_ms: Total latency in milliseconds.
+        tool_call_mismatches: Recorded trace mismatches, or None if not evaluated.
     """
 
     question: str = ""
@@ -93,6 +105,7 @@ class ComponentScores:
     context_lengths: list[int] = field(default_factory=list)
     answer_length: int = 0
     latency_ms: float | None = None
+    tool_call_mismatches: list[ToolCallMismatch] | None = None
 
 
 @dataclass
@@ -165,6 +178,7 @@ class DiagnosisReport:
                     "reason": f.reason,
                     "question": f.question,
                     "evidence": f.evidence,
+                    **({"step": f.step} if f.step is not None else {}),
                 }
                 for f in self.failures
             ],

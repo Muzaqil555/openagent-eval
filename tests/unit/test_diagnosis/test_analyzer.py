@@ -13,6 +13,32 @@ class TestDiagnosisAnalyzer:
         """Set up test fixtures."""
         self.analyzer = DiagnosisAnalyzer()
 
+    def test_diagnose_ordered_agent_steps_and_keep_retrieval_failures(self) -> None:
+        lookup = {"name": "lookup"}
+        plan = {"name": "plan"}
+        with_wrong_args = {"name": "lookup", "arguments": {"count": 2}}
+        report = self.analyzer.analyze(
+            [
+                {
+                    "expected_tool_calls": [plan, lookup, plan],
+                    "actual_tool_calls": [plan, with_wrong_args],
+                    "metrics": {"context_recall": 0.0},
+                },
+                {"expected_tool_calls": [], "actual_tool_calls": [plan]},
+                {"expected_tool_calls": [], "actual_tool_calls": []},
+                {"expected_tool_calls": []},
+            ]
+        )
+
+        assert [(f.mode.value, f.step) for f in report.failures] == [
+            ("empty_retrieval", None),
+            ("wrong_tool_arguments", 2),
+            ("missing_tool_call", 3),
+            ("extra_tool_call", 1),
+            ("missing_actual_trace", None),
+        ]
+        assert report.overall_health == 0.25
+
     def test_empty_results(self) -> None:
         """Empty results should produce a valid but empty report."""
         report = self.analyzer.analyze([])

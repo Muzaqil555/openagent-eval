@@ -16,9 +16,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from openagent_eval.metrics.agent.tool_call import ToolCallCorrectness
+
 if TYPE_CHECKING:
     from openagent_eval.config.models import Config
     from openagent_eval.metrics.base import BaseMetric
+    from openagent_eval.types.tool_call import ToolCallMismatch
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +128,7 @@ class Pipeline:
             )
 
             # 3. Metrics
-            metrics, metric_errors = self._run_metrics(
+            metrics, metric_errors, tool_call_mismatches = self._run_metrics(
                 item,
                 answer,
                 contexts,
@@ -148,6 +151,11 @@ class Pipeline:
                     "total_tokens": token_usage.total_tokens if token_usage else None,
                     "metric_errors": metric_errors,
                     **item.get("metadata", {}),
+                    **(
+                        {"tool_call_mismatches": tool_call_mismatches}
+                        if tool_call_mismatches is not None
+                        else {}
+                    ),
                 },
             )
         except Exception as e:  # pragma: no cover - defensive boundary
@@ -282,15 +290,14 @@ class Pipeline:
         contexts: list[str],
         latency_ms: float | None,
         token_usage: Any | None,
-    ) -> tuple[dict[str, float], dict[str, str]]:
-        """Run every configured metric and collect scores.
+    ) -> tuple[dict[str, float], dict[str, str], list[ToolCallMismatch] | None]:
+        """Collect metric scores, metric errors, and recorded tool-call mismatches.
 
-        Returns:
-            A tuple of ``(metrics, metric_errors)`` where ``metric_errors`` maps
-            metric name -> error message for any metric that raised.
+        Only mismatch categories and step numbers are saved for diagnosis.
         """
         scores: dict[str, float] = {}
         errors: dict[str, str] = {}
+        tool_call_mismatches: list[ToolCallMismatch] | None = None
 
         prompt_tokens = token_usage.prompt_tokens if token_usage else 0
         completion_tokens = token_usage.completion_tokens if token_usage else 0
@@ -320,11 +327,13 @@ class Pipeline:
                     **traces,
                 )
                 scores[name] = result.score
+                if isinstance(metric, ToolCallCorrectness):
+                    tool_call_mismatches = result.metadata.get("mismatches")
             except Exception as e:
                 scores[name] = 0.0
                 errors[name] = str(e)
 
-        return scores, errors
+        return scores, errors, tool_call_mismatches
 
     # ------------------------------------------------------------------ #
     # Helpers                                                             #

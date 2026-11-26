@@ -1,7 +1,7 @@
 """Diagnose command for OpenAgent Eval.
 
 Loads an evaluation report and runs component diagnosis to attribute blame
-when things go wrong — retrieval, generation, or chunking.
+when retrieval, generation, chunking, or recorded agent tool calls go wrong.
 
 Usage::
 
@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -32,6 +33,7 @@ _BLAME_LABELS: dict[str, str] = {
     BlameTarget.GENERATION.value: "[yellow]Generation[/yellow]",
     BlameTarget.CHUNKING.value: "[cyan]Chunking[/cyan]",
     BlameTarget.DATASET.value: "[magenta]Dataset[/magenta]",
+    BlameTarget.TOOL_CALL.value: "[magenta]Tool Call[/magenta]",
     BlameTarget.NONE.value: "[green]Healthy[/green]",
     BlameTarget.UNKNOWN.value: "[dim]Unknown[/dim]",
 }
@@ -46,6 +48,12 @@ _FAILURE_LABELS: dict[str, str] = {
     FailureMode.CHUNKING_SPLIT_INFO_LOST.value: "Chunking Split",
     FailureMode.STALE_INDEX.value: "Stale Index",
     FailureMode.EMBEDDING_MISMATCH.value: "Embedding Mismatch",
+    FailureMode.WRONG_TOOL_CALL.value: "Wrong Tool Call",
+    FailureMode.WRONG_TOOL_ARGUMENTS.value: "Wrong Tool Arguments",
+    FailureMode.MISSING_TOOL_CALL.value: "Missing Tool Call",
+    FailureMode.EXTRA_TOOL_CALL.value: "Extra Tool Call",
+    FailureMode.MISSING_EXPECTED_TRACE.value: "Missing Expected Trace",
+    FailureMode.MISSING_ACTUAL_TRACE.value: "Missing Recorded Trace",
 }
 
 
@@ -130,7 +138,11 @@ def diagnose_command(
         max_recommendations=max_recommendations,
     )
 
-    report = analyzer.analyze(results)
+    try:
+        report = analyzer.analyze(results)
+    except ValidationError as exc:
+        console.print("[red]Error:[/red] Invalid tool-call trace data in report.")
+        raise typer.Exit(code=2) from exc
 
     # Output
     if output == "json" or ctx.json_output:
@@ -279,4 +291,9 @@ def _output_json(report: object) -> None:
     from openagent_eval.diagnosis.models import DiagnosisReport
 
     assert isinstance(report, DiagnosisReport)
-    console.print(json.dumps(report.to_dict(), indent=2))
+    console.print(
+        json.dumps(report.to_dict(), indent=2),
+        soft_wrap=True,
+        markup=False,
+        highlight=False,
+    )

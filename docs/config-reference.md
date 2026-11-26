@@ -225,6 +225,13 @@ oaeval test examples/tool-call-correctness/config.yaml -t tool_call_correctness:
 The example uses mock providers and needs no API keys. The mean is 0.5, so
 the command exits with status 1. Change the minimum to 0.5 to see it pass.
 
+To diagnose mismatches, run `oaeval run examples/tool-call-correctness/config.yaml`
+and pass its saved JSON report to `oaeval diagnose <report.json> --verbose`.
+The diagnosis identifies the one-based position of each wrong tool name, wrong
+argument set, missing call, or extra call. An absent trace is reported without
+a step number. The report stores mismatch categories and step numbers without
+copying tool names or argument values from the traces.
+
 ## `report`
 
 The `report` section controls how evaluation summaries and output files are generated.

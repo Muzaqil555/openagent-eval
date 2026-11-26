@@ -1,9 +1,29 @@
 """Provider-independent representation of a recorded agent tool call."""
 
 import json
-from typing import Any
+from enum import StrEnum
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing_extensions import TypedDict
+
+
+class ToolCallMismatchKind(StrEnum):
+    """Why a recorded trace differs from the expected trace."""
+
+    WRONG_TOOL_CALL = "wrong_tool_call"
+    WRONG_TOOL_ARGUMENTS = "wrong_tool_arguments"
+    MISSING_TOOL_CALL = "missing_tool_call"
+    EXTRA_TOOL_CALL = "extra_tool_call"
+    MISSING_EXPECTED_TRACE = "missing_expected_trace"
+    MISSING_ACTUAL_TRACE = "missing_actual_trace"
+
+
+class ToolCallMismatch(TypedDict):
+    """A discrepancy and its one-based step, if a step can be identified."""
+
+    kind: ToolCallMismatchKind
+    step: Annotated[int, Field(gt=0, strict=True)] | None
 
 
 class ToolCall(BaseModel):

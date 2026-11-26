@@ -1,7 +1,7 @@
 """Component diagnosis module for OpenAgent Eval.
 
-Provides blame attribution when RAG evaluations fail — tells the user
-WHERE it failed: retrieval, generation, or chunking.
+Provides blame attribution for retrieval, generation, chunking, and recorded
+agent tool calls.
 
 Usage::
 

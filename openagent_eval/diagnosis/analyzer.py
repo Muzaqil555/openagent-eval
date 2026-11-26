@@ -6,6 +6,8 @@ producing a DiagnosisReport with actionable recommendations.
 
 from __future__ import annotations
 
+from pydantic import TypeAdapter
+
 from openagent_eval.diagnosis.blame import BlameAttribution
 from openagent_eval.diagnosis.chunking import ChunkingQualityAnalyzer
 from openagent_eval.diagnosis.models import (
@@ -16,6 +18,10 @@ from openagent_eval.diagnosis.models import (
     DiagnosisReport,
     FailureInstance,
 )
+from openagent_eval.metrics.agent.tool_call import ToolCallCorrectness
+from openagent_eval.types.tool_call import ToolCallMismatch
+
+_TOOL_CALL_MISMATCHES = TypeAdapter(list[ToolCallMismatch])
 
 # ---------------------------------------------------------------------------
 # Recommendation templates
@@ -47,6 +53,10 @@ _RECOMMENDATIONS: dict[BlameTarget, list[str]] = {
         "Validate the dataset format and required fields.",
         "Check that ground truth answers are accurate.",
         "Review dataset for class imbalance or missing entries.",
+    ],
+    BlameTarget.TOOL_CALL: [
+        "Compare the expected and recorded tool calls at the reported steps.",
+        "Check tool names, argument schemas, and whether both traces were recorded.",
     ],
     BlameTarget.UNKNOWN: [
         "Run the evaluation with verbose output for more details.",
@@ -92,7 +102,8 @@ class DiagnosisAnalyzer:
         Args:
             results: List of evaluation result dicts. Each dict should contain
                 keys: question, answer, contexts, metrics, metadata.
-                This matches the format produced by ``Pipeline._evaluate_item``.
+                Raw ``expected_tool_calls`` and ``actual_tool_calls`` can also
+                be provided for direct trace diagnosis.
 
         Returns:
             DiagnosisReport with blame summary, failures, and recommendations.
@@ -167,6 +178,17 @@ class DiagnosisAnalyzer:
         if not isinstance(metadata, dict):
             metadata = {}
 
+        mismatches = metadata.get("tool_call_mismatches")
+        if "expected_tool_calls" in item or "actual_tool_calls" in item:
+            mismatches = (
+                ToolCallCorrectness()
+                .evaluate(
+                    expected_tool_calls=item.get("expected_tool_calls"),
+                    actual_tool_calls=item.get("actual_tool_calls"),
+                )
+                .metadata["mismatches"]
+            )
+
         # Separate retrieval vs generation metrics
         retrieval_keys = {
             "context_precision",
@@ -206,6 +228,11 @@ class DiagnosisAnalyzer:
             context_lengths=[len(c) for c in contexts],
             answer_length=len(str(item.get("answer", ""))),
             latency_ms=metadata.get("latency_ms"),
+            tool_call_mismatches=(
+                _TOOL_CALL_MISMATCHES.validate_python(mismatches)
+                if mismatches is not None
+                else None
+            ),
         )
 
     def _extract_validated_contexts(
